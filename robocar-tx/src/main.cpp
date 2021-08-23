@@ -73,7 +73,7 @@ void setup() {
   tft.initR(INITR_MINI160x80);
   tft.cp437(true);
   // Serial.println("TFT initialized");
-  tft.setRotation(3); // USB jack on the left, joystick on the right
+  tft.setRotation(1); // USB jack on the right, joystick on the right
   tft.fillScreen(ST77XX_BLACK);
   delay(100);
   // print_test();
@@ -114,7 +114,7 @@ void setup() {
 
   // Serial.println("Please use Adafruit's Bluefruit LE app to connect in UART mode");
   // Serial.println("Once connected, enter character(s) that you wish to send");
-  print_scroll("Connect to " + id_str);
+  print_scroll("Dev ID : " + id_str);
 
 }
 
@@ -175,33 +175,40 @@ void loop() {
   // convert to bytes
   byte btns_out = 0;
   byte ch_3_out = map(ch_3_in, 0, 1023, 0, 255);
-  byte st_out = st_out = map(st_in, 0, 1023, 0, 255);
-  byte th_out = th_out = map(th_in, 0, 1023, 0, 255);
+  byte st_out = map(st_in, 0, 1023, 0, 255);
+  byte th_out = map(th_in, 0, 1023, 0, 255);
 
   if (ch_4_in == HIGH) {
     btns_out |= 1 << button::ch_4_switch;
   }
-
+  // SCREEN ROTATED SO IT'S ALL REVERSED
   if (! (ss_btns & TFTWING_BUTTON_LEFT)) {
-    btns_out |= 1 << button::joy_left;
+    btns_out |= 1 << button::joy_right;
+    print_scroll("RIGHT");
   }
   if (! (ss_btns & TFTWING_BUTTON_RIGHT)) {
-    btns_out |= 1 << button::joy_right;
+    btns_out |= 1 << button::joy_left;
+    print_scroll("LEFT");
   }
   if (! (ss_btns & TFTWING_BUTTON_DOWN)) {
-    btns_out |= 1 << button::joy_down;
+    btns_out |= 1 << button::joy_up;
+    print_scroll("UP");
   }
   if (! (ss_btns & TFTWING_BUTTON_UP)) {
-    btns_out |= 1 << button::joy_up;  
+    btns_out |= 1 << button::joy_down;
+    print_scroll("DOWN");  
   }
   if (! (ss_btns & TFTWING_BUTTON_A)) {
     btns_out |= 1 << button::tft_a;
+    print_scroll("A");
   }
   if (! (ss_btns & TFTWING_BUTTON_B)) {
     btns_out |= 1 << button::tft_b;
+    print_scroll("B");
   }
   if (! (ss_btns & TFTWING_BUTTON_SELECT)) {
     btns_out |= 1 << button::joy_select;
+    print_scroll("select");
   }
 
   // send to car
@@ -218,7 +225,8 @@ void connect_callback(uint16_t conn_handle)
 
   // Serial.print("Connected to ");
   // Serial.println(central_name);
-  print_scroll("Connected to " + String(central_name));
+  print_scroll("Connected: ");
+  print_scroll("  " + String(central_name));
 }
 
 /**
@@ -235,29 +243,33 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   // Serial.print("Disconnected, reason = 0x"); 
   // Serial.println(reason, HEX);
   print_scroll("");
-  print_scroll("Disconnected, reason = 0x" + String(reason, HEX));
+  print_scroll("Disconnected:"); 
+  print_scroll(" reason = 0x" + String(reason, HEX));
 }
 
 
 void print_scroll(String new_str) {
   tft.setTextWrap(false);
   tft.setCursor(0, 0);
-  tft.setTextColor(ST7735_WHITE, ST77XX_BLACK);
+  tft.setTextColor(ST7735_WHITE, ST77XX_BLACK);  // should be grey
   tft.setTextSize(1);
   if (scroll_called < scroll_size) {
     scroll_strs[scroll_called] = new_str;
     scroll_called++;
   }
   else {
-    for (int i_shift = 1; i_shift <= scroll_size; i_shift++) {
+    for (int i_shift = 1; i_shift < scroll_size; i_shift++) {
       scroll_strs[i_shift-1] = scroll_strs[i_shift]; 
     }
-    scroll_strs[scroll_size] = new_str;
+    scroll_strs[scroll_size-1] = new_str;
   }
-  tft.fillScreen(ST77XX_BLACK);
-  for (int i_print = 0; i_print <= scroll_size; i_print++) {
-    tft.println(scroll_strs[i_print]);
-    
+  for (int i_print = 0; i_print < scroll_size; i_print++) {
+    tft.print(scroll_strs[i_print]);
+    if (tft.getCursorX() < tft.width()) {
+      tft.fillRect(tft.getCursorX(), tft.getCursorY(), 
+                   tft.width() - tft.getCursorX(), 16, ST77XX_BLACK);
+    }
+    tft.print('\n');
   }
 }
 
