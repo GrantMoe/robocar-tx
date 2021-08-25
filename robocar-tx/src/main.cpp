@@ -39,28 +39,28 @@ enum button { joy_up, joy_down, joy_left, joy_right, joy_select, tft_a,
 Adafruit_miniTFTWing ss;
 Adafruit_ST7735 tft = Adafruit_ST7735(pin::tft_cs, pin::tft_dc, pin::tft_rst);
 
-int scroll_size = 9;
-int scroll_called;
-String scroll_strs[] = {"", "", "", "", "", "", "", "", ""};
-
 String id_str = "EF:EB:FD:C7:F8:DA";
 
 void startAdv(void);
 void connect_callback(uint16_t conn_handle);
 void disconnect_callback(uint16_t conn_handle, uint8_t reason);
-// void print_test(void);
 void print_scroll(String);
 
+
+float norm_axis(long, long, long, float, float);
+byte norm_byte(float, float, float);
+float apply_exp(float, float);
+
+
 void setup() {
-  
   // set input pins
   pinMode(pin::ch_4, INPUT);
   pinMode(pin::st_rev, INPUT_PULLUP);
   pinMode(pin::th_rev, INPUT_PULLUP);
 
-  Serial.begin(115200);
+  // Serial.begin(115200);
 
-  scroll_called = 0;
+  // scroll_called = 0;
 
   // tft wing
   if(!ss.begin()) {
@@ -115,7 +115,7 @@ void setup() {
   // Serial.println("Please use Adafruit's Bluefruit LE app to connect in UART mode");
   // Serial.println("Once connected, enter character(s) that you wish to send");
   print_scroll("Dev ID : " + id_str);
-
+  
 }
 
 void startAdv(void)
@@ -146,37 +146,50 @@ void startAdv(void)
   Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
 }
 
+
 void loop() {
 
   // poll analog
   int ch_3_in = analogRead(pin::ch_3);
   int st_in = analogRead(pin::st);
   int st_exp_in = analogRead(pin::st_dr);
-  int st_trm_in = analogRead(pin::st_trm);
+  int st_trm_in = analogRead(pin::st_trm) - 511;
   int th_in = analogRead(pin::th);
   int th_exp_in = analogRead(pin::th_dr);
-  int th_trm_in = analogRead(pin::th_trm);
+  int th_trm_in = analogRead(pin::th_trm) - 511;
 
   // poll digital
   int ch_4_in = digitalRead(pin::ch_4);
   bool st_rev = digitalRead(pin::st_rev) == LOW;
   bool th_rev = digitalRead(pin::th_rev) == LOW;
-
   uint32_t ss_btns = ss.readButtons();
 
-  // reverse st/th if necessary
-  if (st_rev) {
-    st_in = abs(st_in - 1023);
-  }
-  if (th_rev) {
-    th_in = abs(th_in - 1023);
-  }
+  // process analog
 
-  // convert to bytes
+  // apply trim
+  st_in += st_trm_in;
+  th_in += th_trm_in;
+
+  // norm axes
+  float st_val = norm_axis(st_in, -st_trm, 1023+st_trm, -1.0, 1.0);
+  float th_val = norm_axis(th_in, -th_trm, 1023+th_trm, -1.0, 1.0);
+  float st_exp_val = float(st_exp_in) / 1023.0;
+  float th_exp_val = float(th_exp_in) / 1023.0;
+
+  // reverse 
+  st_val = st_rev ? -1.0 * st_val : st_val;
+  th_val = th_rev ? -1.0 * th_val : th_val;
+
+  // apply exponent mod (TEST)
+  st_val = apply_exp(st_val, st_exp_val);
+  th_val = apply_exp(th_val, th_exp_val);
+
+  // convert button presses to byte
   byte btns_out = 0;
-  byte ch_3_out = map(ch_3_in, 0, 1023, 0, 255);
-  byte st_out = map(st_in, 0, 1023, 0, 255);
-  byte th_out = map(th_in, 0, 1023, 0, 255);
+  byte ch_3_out = norm_byte(ch_3_in, 0, 1023);
+  byte st_out = norm_byte(st_val, -1.0, 1.0);
+  byte th_out = norm_byte(th_val, -1.0, 1.0);
+
 
   if (ch_4_in == HIGH) {
     btns_out |= 1 << button::ch_4_switch;
@@ -184,34 +197,47 @@ void loop() {
   // SCREEN ROTATED SO IT'S ALL REVERSED
   if (! (ss_btns & TFTWING_BUTTON_LEFT)) {
     btns_out |= 1 << button::joy_right;
-    print_scroll("RIGHT");
+    // print_scroll("RIGHT");
   }
   if (! (ss_btns & TFTWING_BUTTON_RIGHT)) {
     btns_out |= 1 << button::joy_left;
-    print_scroll("LEFT");
+    // print_scroll("LEFT");
   }
   if (! (ss_btns & TFTWING_BUTTON_DOWN)) {
     btns_out |= 1 << button::joy_up;
-    print_scroll("UP");
+    // print_scroll("UP");
   }
   if (! (ss_btns & TFTWING_BUTTON_UP)) {
     btns_out |= 1 << button::joy_down;
-    print_scroll("DOWN");  
+    // print_scroll("DOWN");  
   }
   if (! (ss_btns & TFTWING_BUTTON_A)) {
     btns_out |= 1 << button::tft_a;
-    print_scroll("A");
+    // print_scroll("A");
   }
   if (! (ss_btns & TFTWING_BUTTON_B)) {
     btns_out |= 1 << button::tft_b;
-    print_scroll("B");
+    // print_scroll("B");
   }
   if (! (ss_btns & TFTWING_BUTTON_SELECT)) {
     btns_out |= 1 << button::joy_select;
-    print_scroll("select");
+    // print_scroll("select");
   }
 
   // send to car
+  uint8_t buf[8];
+  buf[0] = 'c';
+  buf[1] = st_out;
+  buf[2] = ',';
+  buf[3] = th_out;
+  buf[4] = ',';
+  buf[5] = ch_3_out;
+  buf[6] = ',';
+  buf[7] = btns_out;
+
+  bleuart.write(buf, 8);
+  
+  delay(100);
 }
 
 // callback invoked when central connects
@@ -242,13 +268,16 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   // Serial.println();
   // Serial.print("Disconnected, reason = 0x"); 
   // Serial.println(reason, HEX);
-  print_scroll("");
+  // print_scroll("");
   print_scroll("Disconnected:"); 
   print_scroll(" reason = 0x" + String(reason, HEX));
 }
 
 
 void print_scroll(String new_str) {
+  static int scroll_size = 9;
+  static int scroll_called;
+  static String scroll_strs[] = {"", "", "", "", "", "", "", "", ""};
   tft.setTextWrap(false);
   tft.setCursor(0, 0);
   tft.setTextColor(ST7735_WHITE, ST77XX_BLACK);  // should be grey
@@ -273,12 +302,15 @@ void print_scroll(String new_str) {
   }
 }
 
-// revealed: room for 9 lines 
-// void print_test() {
-//   tft.setTextWrap(false);
-//   tft.setCursor(0, 0);
-//   tft.setTextColor(ST7735_WHITE, ST77XX_BLACK);
-//   tft.setTextSize(1);
-//   for (int i = 0; i < 10; i++) {
-//     tft.println(i);
-//   }
+float norm_axis(long x, long in_min, long in_max, float out_min, float out_max) {
+  return float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
+}
+
+byte norm_byte(float x, float in_min, float in_max) {
+  return (x - in_min) * 255 / (in_max - in_min);
+}
+
+// rcgroups.com/forums/showthread.php?1675540-who-know-the-algorithm-for-exponential-curve-in-RC
+float apply_exp(float x, float a) {
+  return a * pow(x, 3) + (1.0 - a) * x;
+}
