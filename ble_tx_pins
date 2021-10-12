@@ -1,0 +1,119 @@
+
+PCB
+
+1 - 3ch		- P30 / A6
+2 - 4ch		- P31 / A7 (test)
+3 - t.trim	- P5 / A3
+4 - t.in	- P3 / A1
+5 - t.dr	- P29 / A5
+6 - t.rev	- P27~
+7 - vcc
+8 - bat
+9 - gnd
+10 - btn	- DFU / P20~
+11 - s.in	- P2 / A0
+12 - s.dr	- P28 / A4	
+13 - s.trim	- P4 / A2
+14 - led 	- P16~
+15 - s.rev	- P11~
+
+
+
+top:
+PIN_LED1 / P0.17
+
+left:
+RST
+3.3V
+3.3V
+GND
+A0 / P0.02		- s.in
+A1 / P0.03		- t.in
+A2 / P0.04		- s.trim
+A3 / P0.05		- t.trim
+A4 / P0.28		- s.dr
+A5 / P0.29		- t.dr
+SCK / P0.12		- TFT SCK
+MOSI / P0.13	- TFT MOSI
+MISO / P0.14	- (bluetooth led?)
+TXD / P0.08		-
+RXD / P0.06 	-
+PIN_DFU / P0.20	- btn~
+
+bottom:
+FRST/PO.22		- on bottom, don't pull low on start. pad.
+
+right:
+VBAT
+EN
+VBUS
+P0.16			- led~
+P0.15			- TFT DC (jump)
+P0.07			- TFT CS (jump)
+P0.11			- s.rev~
+P0.31 / A7		- 4ch? test with divider
+P0.30 / A6		- 3ch
+P0.27			- t.rev~
+SCL / P0.26		- SEESAW
+SDA / P0.25		- SEESAW
+
+PIN_LED2 / P0.19 - BLE
+
+
+
+---
+
+ABSOLUTE MINIMUM (START HERE):
+
+PCB
+
+1 - 3ch		- P4 / A2
+2 - 4ch		- 
+3 - t.trim	- 
+4 - t.in	- P3 / A1
+5 - t.dr	- 
+6 - t.rev	- 
+7 - vcc
+8 - bat		- VBUS
+9 - gnd 	- GND
+10 - btn	- 
+11 - s.in	- P2 / A0
+12 - s.dr	- 	
+13 - s.trim	- 
+14 - led 	- 
+15 - s.rev	- 
+
+
+left:
+RST
+3.3V
+3.3V
+GND
+A0 / P0.02		- s.in
+A1 / P0.03		- t.in
+A2 / P0.04		- s.trim
+A3 / P0.05		- t.trim
+A4 / P0.28		- s.dr
+A5 / P0.29		- t.dr
+SCK / P0.12		- TFT SCK
+MOSI / P0.13	- TFT MOSI
+MISO / P0.14	- (bluetooth led?)
+TXD / P0.08		-
+RXD / P0.06 	-
+PIN_DFU / P0.20	- btn~
+
+right:
+VBAT
+EN
+VBUS
+P0.16			- led~
+P0.15			- TFT DC (jump)
+P0.07			- TFT CS (jump)
+P0.11			- s.rev~
+P0.31 / A7		- 4ch? test with divider
+P0.30 / A6		- 3ch
+P0.27			- t.rev~
+SCL / P0.26		- SEESAW
+SDA / P0.25		- SEESAW
+
+PIN_LED2 / P0.19 - BLE
