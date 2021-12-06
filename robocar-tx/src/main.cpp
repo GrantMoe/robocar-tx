@@ -58,7 +58,7 @@ void setup() {
   pinMode(pin::st_rev, INPUT_PULLUP);
   pinMode(pin::th_rev, INPUT_PULLUP);
 
-  // Serial.begin(115200);
+  Serial.begin(115200);
 
   // scroll_called = 0;
 
@@ -237,7 +237,7 @@ void loop() {
 
   bleuart.write(buf, 8);
   
-  delay(100);
+  delay(500);
 }
 
 // callback invoked when central connects
@@ -249,8 +249,8 @@ void connect_callback(uint16_t conn_handle)
   char central_name[32] = { 0 };
   connection->getPeerName(central_name, sizeof(central_name));
 
-  // Serial.print("Connected to ");
-  // Serial.println(central_name);
+  Serial.print("Connected to ");
+  Serial.println(central_name);
   print_scroll("Connected: ");
   print_scroll("  " + String(central_name));
 }
