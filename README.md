@@ -16,9 +16,10 @@ My 2-channel RC radio wasn't cutting it, so I decided to make my own BLE control
 - [x] TFT/seesaw joystick and button input 
 - [x] approximate Arduino's Serial dislpay via TFT screen
 - [x] transmit control inputs to car
-- [ ] implement other car parameters (end stops, center point, max throttle, etc.) in software
+- [x] implement other car parameters (end stops, center point, max throttle, etc.) in software
 - [ ] TFT menu to manipulate the above parameters
-- [ ] send paramater changes to the car, get confirmation 
+- [ ] send paramater changes to the car
+- [ ] get state from car 
 
 
 ### tbd
