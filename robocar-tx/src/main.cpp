@@ -40,7 +40,7 @@ enum pin { ch_3 = 30,
 enum button { joy_up, joy_down, joy_left, joy_right, joy_select, tft_a, 
               tft_b, ch_4_switch };
 
-enum mode { autonomous, manual, training };
+enum mode { autonomous, manual, training, erasing, };
 
 bool is_active;
 uint8_t mode;
@@ -50,10 +50,11 @@ Adafruit_miniTFTWing ss;
 Adafruit_ST7735 tft = Adafruit_ST7735(pin::tft_cs, pin::tft_dc, pin::tft_rst);
 
 String id_str = "EF:EB:FD:C7:F8:DA";
-String mode_string[] = { "Autonomous", "Manual", "Data"};
+String mode_string[] = { "Autonomous", "Manual", "Data", "Erasing"};
 char state_string[3][2][20] = { {"Stopped", "Driving"},  {"Disarmed", "Armed"}, {"Paused", "Recording"}  };
 
 int current_mode;
+int seconds_to_erase;
 
 void startAdv(void);
 void connect_callback(uint16_t);
@@ -171,6 +172,7 @@ void startAdv(void)
 
 void loop() {
 
+
   // poll analog
   int ch_3_in = analogRead(pin::ch_3);
   int st_in = analogRead(pin::st);
@@ -185,6 +187,11 @@ void loop() {
   bool st_rev = digitalRead(pin::st_rev) == LOW;
   bool th_rev = digitalRead(pin::th_rev) == LOW;
   uint32_t ss_btns = ss.readButtons();
+
+
+  // Update state and mode
+  processMode(ch_3_in);
+  processState(ch_4_in);
 
 
   // process analog
@@ -246,6 +253,8 @@ void loop() {
     // print_scroll("select");
   }
 
+  
+
   // send to car
   uint8_t buf[8];
   buf[0] = 'c';
@@ -259,9 +268,6 @@ void loop() {
 
   bleuart.write(buf, 8);
 
-  // avert your eyes!
-  processMode(ch_3_in);
-  processState(ch_4_in);
 
   // How much?
   delay(LOOP_DELAY);
