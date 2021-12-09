@@ -17,6 +17,10 @@ BLEDis  bledis;  // device information
 BLEUart bleuart; // uart over ble
 BLEBas  blebas;  // battery
 
+#define CH3_TRAIN 682
+#define CH3_AUTO 341
+#define WIPE_SECONDS 5
+#define LOOP_DELAY 100
 
 enum pin { ch_3 = 30,
            ch_4 = 11,
@@ -36,15 +40,29 @@ enum pin { ch_3 = 30,
 enum button { joy_up, joy_down, joy_left, joy_right, joy_select, tft_a, 
               tft_b, ch_4_switch };
 
+enum mode { autonomous, manual, training };
+
+bool is_active;
+uint8_t mode;
+String status;
+
 Adafruit_miniTFTWing ss;
 Adafruit_ST7735 tft = Adafruit_ST7735(pin::tft_cs, pin::tft_dc, pin::tft_rst);
 
 String id_str = "EF:EB:FD:C7:F8:DA";
+String mode_string[] = { "Autonomous", "Manual", "Data"};
+char state_string[3][2][20] = { {"Stopped", "Driving"},  {"Disarmed", "Armed"}, {"Paused", "Recording"}  };
+
+int current_mode;
 
 void startAdv(void);
-void connect_callback(uint16_t conn_handle);
-void disconnect_callback(uint16_t conn_handle, uint8_t reason);
+void connect_callback(uint16_t);
+void disconnect_callback(uint16_t, uint8_t);
 void print_scroll(String);
+void print_screen(String, bool);
+void processState(int);
+void processMode(int);
+void print_status(bool, bool, bool);
 
 
 float norm_axis(long, long, long, float, float);
@@ -116,6 +134,10 @@ void setup() {
   // Serial.println("Once connected, enter character(s) that you wish to send");
   print_scroll("Dev ID : " + id_str);
   
+  
+  current_mode = mode::manual;
+  is_active = false; // state_string[current_mode][false];
+  print_status(true, true, true);
 }
 
 void startAdv(void)
@@ -164,6 +186,7 @@ void loop() {
   bool th_rev = digitalRead(pin::th_rev) == LOW;
   uint32_t ss_btns = ss.readButtons();
 
+
   // process analog
 
   // apply trim
@@ -190,10 +213,9 @@ void loop() {
   byte st_out = norm_byte(st_val, -1.0, 1.0);
   byte th_out = norm_byte(th_val, -1.0, 1.0);
 
-
-  if (ch_4_in == HIGH) {
+  if (ch_4_in == LOW) {
     btns_out |= 1 << button::ch_4_switch;
-  }
+  } 
   // SCREEN ROTATED SO IT'S ALL REVERSED
   if (! (ss_btns & TFTWING_BUTTON_LEFT)) {
     btns_out |= 1 << button::joy_right;
@@ -236,8 +258,78 @@ void loop() {
   buf[7] = btns_out;
 
   bleuart.write(buf, 8);
-  
-  delay(500);
+
+  // avert your eyes!
+  processMode(ch_3_in);
+  processState(ch_4_in);
+
+  // How much?
+  delay(LOOP_DELAY);
+}
+
+void processMode(int mode_switch) {
+  uint8_t new_mode;
+  bool clear_mode;
+  if (mode_switch > CH3_TRAIN) {
+    new_mode = mode::training;
+  } else if (mode_switch < CH3_AUTO) {
+    new_mode = mode::autonomous;
+  } else {
+    new_mode = mode::manual;
+  }
+  clear_mode = new_mode != current_mode;
+  current_mode = new_mode;
+  print_status(clear_mode, clear_mode, false);
+  clear_mode = false;
+}
+
+void processState(int state_switch) {
+  uint8_t new_active;
+  bool clear_state = false;
+  if (state_switch == LOW) {
+    new_active = true;
+  } else {
+    new_active = false;
+  }
+  clear_state = new_active != is_active;
+  is_active = new_active;
+  print_status(false, clear_state, false);
+  clear_state = false;
+}
+
+void print_status(bool reset_mode, bool reset_state, bool reset_screen) {
+  if (reset_screen) {
+    tft.fillRect(0, 18, tft.width(), 41, ST77XX_BLACK);
+    tft.setCursor(0,18);
+    tft.println("Mode:  " + mode_string[current_mode] + "\n");    
+    tft.print("State: ");
+    tft.print(is_active ? state_string[current_mode][is_active] : state_string[current_mode][is_active]);
+  }
+  else 
+  { 
+    if (reset_mode) {
+      tft.fillRect(30, 18, tft.width(), 25, ST77XX_BLACK);
+      tft.setCursor(0, 18);
+      tft.print("Mode:  " + mode_string[current_mode]);
+      reset_state = true;
+    } 
+    if (reset_state) {
+      tft.fillRect(30, 34, tft.width(), 42, ST77XX_BLACK);
+      tft.setCursor(0, 34);
+      tft.print("State: ");
+      tft.print(is_active ? state_string[current_mode][is_active] : state_string[current_mode][is_active]);
+    }
+  }
+}
+
+void print_screen(String new_str, bool refresh) {
+  if (refresh) {
+    tft.fillScreen(ST77XX_BLACK);
+    tft.setCursor(0,0);
+    tft.setTextWrap(true);
+  }
+  tft.setCursor(0,20);
+  tft.print(new_str);
 }
 
 // callback invoked when central connects
@@ -251,8 +343,9 @@ void connect_callback(uint16_t conn_handle)
 
   Serial.print("Connected to ");
   Serial.println(central_name);
-  print_scroll("Connected: ");
-  print_scroll("  " + String(central_name));
+  print_screen("Connected:" + String(central_name), true);
+  // print_scroll("Connected: ");
+  // print_scroll("  " + String(central_name));
 }
 
 /**
@@ -271,7 +364,10 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   // print_scroll("");
   print_scroll("Disconnected:"); 
   print_scroll(" reason = 0x" + String(reason, HEX));
+  is_active = false;
+  print_screen("Dev ID : " + id_str, true);
 }
+
 
 
 void print_scroll(String new_str) {
@@ -301,6 +397,8 @@ void print_scroll(String new_str) {
     tft.print('\n');
   }
 }
+
+
 
 float norm_axis(long x, long in_min, long in_max, float out_min, float out_max) {
   return float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
