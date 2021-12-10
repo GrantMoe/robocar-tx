@@ -22,6 +22,22 @@ BLEBas  blebas;  // battery
 #define WIPE_SECONDS 5
 #define LOOP_DELAY 100
 
+#define MIN_STEERING 130
+#define MAX_STEERING 941
+#define MIN_THROTTLE 230
+#define MAX_THROTTLE 646
+#define MIN_ST_TRIM 0
+#define MAX_ST_TRIM 942
+#define MIN_TH_TRIM 0
+#define MAX_TH_TRIM 939
+
+
+int min_th_trim = 1023;
+int max_th_trim = 0;
+
+int min_st_trim = 1023;
+int max_st_trim = 0;
+
 enum pin { ch_3 = 30,
            ch_4 = 11,
            st = 2,
@@ -77,7 +93,7 @@ void setup() {
   pinMode(pin::st_rev, INPUT_PULLUP);
   pinMode(pin::th_rev, INPUT_PULLUP);
 
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   // scroll_called = 0;
 
@@ -86,12 +102,12 @@ void setup() {
     Serial.println("seesaw couldn't be found!");
     while(1);
   }
-  // Serial.println("seesaw started");
+  Serial.println("seesaw started");
   ss.tftReset();
   ss.setBacklight(TFTWING_BACKLIGHT_ON);
   tft.initR(INITR_MINI160x80);
   tft.cp437(true);
-  // Serial.println("TFT initialized");
+  Serial.println("TFT initialized");
   tft.setRotation(1); // USB jack on the right, joystick on the right
   tft.fillScreen(ST77XX_BLACK);
   delay(100);
@@ -177,16 +193,57 @@ void loop() {
   int ch_3_in = analogRead(pin::ch_3);
   int st_in = analogRead(pin::st);
   int st_exp_in = analogRead(pin::st_dr);
-  int st_trm_in = analogRead(pin::st_trm) - 511;
+  int st_trm_in = analogRead(pin::st_trm); // - 511;
   int th_in = analogRead(pin::th);
   int th_exp_in = analogRead(pin::th_dr);
-  int th_trm_in = analogRead(pin::th_trm) - 511;
+  int th_trm_in = analogRead(pin::th_trm); // - 511;
 
   // poll digital
   int ch_4_in = digitalRead(pin::ch_4);
   bool st_rev = digitalRead(pin::st_rev) == LOW;
   bool th_rev = digitalRead(pin::th_rev) == LOW;
   uint32_t ss_btns = ss.readButtons();
+
+
+  // Skipping all of the above for now
+  byte st_out = norm_byte(st_in, MIN_STEERING, MAX_STEERING);
+  byte th_out = norm_byte(th_in, MIN_THROTTLE, MAX_THROTTLE);
+  byte st_trm_out = norm_byte(st_trm_in, MIN_STEERING, MAX_STEERING) - 128;
+  byte th_trm_out = norm_byte(th_trm_in, MIN_THROTTLE, MAX_THROTTLE) - 128;
+
+  st_out += st_trm_out;
+  th_out += th_trm_out;
+
+  st_out = abs(st_out - (255 * (st_rev * 1)));
+  th_out = abs(th_out - (255 * (th_rev * 1)));
+
+
+
+  // Serial.print("st_trm_in: ");
+  // Serial.println(st_trm_in);
+  // Serial.print("th_trm_in: ");
+  // Serial.println(th_trm_in);
+  // if (th_trm_in < min_th_trim) {
+  //   min_th_trim = th_trm_in;
+  // } 
+  // if (th_trm_in > max_th_trim) {
+  //   max_th_trim = th_trm_in;
+  // } 
+  // if (st_trm_in < min_st_trim) {
+  //   min_st_trim = st_trm_in;
+  // } 
+  // if (st_trm_in > max_st_trim) {
+  //   max_st_trim = st_trm_in;
+  // } 
+  // Serial.print("min throttle: ");
+  // Serial.println(min_th_trim);
+  // Serial.print("max throttle: ");
+  // Serial.println(max_th_trim);
+  // Serial.print("min steering trim: ");
+  // Serial.println(min_st_trim);
+  // Serial.print("max steering trim: ");
+  // Serial.println(max_st_trim);
+  // Serial.println("----------");
 
 
   // Update state and mode
@@ -197,28 +254,35 @@ void loop() {
   // process analog
 
   // apply trim
-  st_in += st_trm_in;
-  th_in += th_trm_in;
+  // st_in += st_trm_in;
+  // th_in += th_trm_in;
 
   // norm axes
-  float st_val = norm_axis(st_in, -st_trm, 1023+st_trm, -1.0, 1.0);
-  float th_val = norm_axis(th_in, -th_trm, 1023+th_trm, -1.0, 1.0);
-  float st_exp_val = float(st_exp_in) / 1023.0;
-  float th_exp_val = float(th_exp_in) / 1023.0;
+  // float st_val = norm_axis(st_in, -st_trm, 1023+st_trm, -1.0, 1.0);
+  // float th_val = norm_axis(th_in, -th_trm, 1023+th_trm, -1.0, 1.0);
+  // float st_exp_val = float(st_exp_in) / 1023.0;
+  // float th_exp_val = float(th_exp_in) / 1023.0;
 
   // reverse 
-  st_val = st_rev ? -1.0 * st_val : st_val;
-  th_val = th_rev ? -1.0 * th_val : th_val;
+  // st_val = st_rev ? -1.0 * st_val : st_val;
+  // th_val = th_rev ? -1.0 * th_val : th_val;
+
+
 
   // apply exponent mod (TEST)
-  st_val = apply_exp(st_val, st_exp_val);
-  th_val = apply_exp(th_val, th_exp_val);
+  // st_val = apply_exp(st_val, st_exp_val);
+  // th_val = apply_exp(th_val, th_exp_val);
 
   // convert button presses to byte
   byte btns_out = 0;
   byte ch_3_out = norm_byte(ch_3_in, 0, 1023);
-  byte st_out = norm_byte(st_val, -1.0, 1.0);
-  byte th_out = norm_byte(th_val, -1.0, 1.0);
+  // byte st_out = norm_byte(st_val, -1.0, 1.0);
+  // byte th_out = norm_byte(th_val, -1.0, 1.0);
+
+
+
+
+
 
   if (ch_4_in == LOW) {
     btns_out |= 1 << button::ch_4_switch;
@@ -256,18 +320,27 @@ void loop() {
   
 
   // send to car
+  // since UART, don't need first char?
   uint8_t buf[8];
-  buf[0] = 'c';
-  buf[1] = st_out;
-  buf[2] = ',';
-  buf[3] = th_out;
-  buf[4] = ',';
-  buf[5] = ch_3_out;
-  buf[6] = ',';
-  buf[7] = btns_out;
+  // buf[0] = 'c';
+  buf[0] = st_out;
+  buf[1] = ',';
+  buf[2] = th_out;
+  buf[3] = ',';
+  buf[4] = ch_3_out;
+  buf[5] = ',';
+  buf[6] = btns_out;
+  // buf[7] = 0
 
   bleuart.write(buf, 8);
 
+
+  while (bleuart.available()) {
+    uint8_t ch;
+
+    ch = (uint8_t) bleuart.read();
+    print_scroll(String(ch));
+  }
 
   // How much?
   delay(LOOP_DELAY);
@@ -364,10 +437,10 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   (void) conn_handle;
   (void) reason;
 
-  // Serial.println();
-  // Serial.print("Disconnected, reason = 0x"); 
-  // Serial.println(reason, HEX);
-  // print_scroll("");
+  Serial.println();
+  Serial.print("Disconnected, reason = 0x"); 
+  Serial.println(reason, HEX);
+  print_scroll("");
   print_scroll("Disconnected:"); 
   print_scroll(" reason = 0x" + String(reason, HEX));
   is_active = false;
