@@ -3,7 +3,6 @@
 #include <Adafruit_ST7735.h>
 #include "Adafruit_miniTFTWing.h"
 #include <InternalFileSystem.h>
-#include "../lib/Bluefruit52Lib/src/services/BLEDfu.h"
 #include "../lib/Bluefruit52Lib/src/services/BLEDis.h"
 #include "../lib/Bluefruit52Lib/src/services/BLEBas.h"
 #include "../lib/Bluefruit52Lib/src/services/BLEUart.h"
@@ -12,25 +11,34 @@
 
 
 // BLE Service
-BLEDfu  bledfu;  // OTA DFU service
 BLEDis  bledis;  // device information
 BLEUart bleuart; // uart over ble
 BLEBas  blebas;  // battery
 
+BLEHidGamepad blegamepad; // test
+hid_gamepad_report_t gp;
+
 #define CH3_TRAIN 682
 #define CH3_AUTO 341
 #define WIPE_SECONDS 5
-#define LOOP_DELAY 100
+#define LOOP_DELAY 1000
 
 #define MIN_STEERING 130
 #define MAX_STEERING 941
 #define MIN_THROTTLE 230
 #define MAX_THROTTLE 646
 #define MIN_ST_TRIM 0
-#define MAX_ST_TRIM 942
+#define MAX_ST_TRIM 1023 // 942
 #define MIN_TH_TRIM 0
-#define MAX_TH_TRIM 939
+#define MAX_TH_TRIM 1023 // 939
 
+int st_max = 0;
+int st_min = 1023;
+int th_max = 0;
+int th_min = 1023;
+
+
+extern uint8_t packetbuffer[];
 
 int min_th_trim = 1023;
 int max_th_trim = 0;
@@ -110,13 +118,8 @@ void setup() {
   Serial.println("TFT initialized");
   tft.setRotation(1); // USB jack on the right, joystick on the right
   tft.fillScreen(ST77XX_BLACK);
-  delay(100);
+  delay(200);
   // print_test();
-
-  // Setup the BLE LED to be enabled on CONNECT
-  // Note: This is actually the default behavior, but provided
-  // here in case you want to control this LED manually via PIN 19
-  Bluefruit.autoConnLed(true);
 
   // Config the peripheral connection with maximum bandwidth 
   // more SRAM required by SoftDevice
@@ -125,12 +128,10 @@ void setup() {
 
   Bluefruit.begin();
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
-  Bluefruit.setName(getMcuUniqueID()); // useful testing with multiple central connections
+
+  // Bluefruit.setName(getMcuUniqueID()); // useful testing with multiple central connections
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
-
-  // To be consistent OTA DFU should be added first if it exists
-  bledfu.begin();
 
   // Configure and Start Device Information Service
   bledis.setManufacturer("Adafruit Industries");
@@ -138,11 +139,13 @@ void setup() {
   bledis.begin();
 
   // Configure and Start BLE Uart Service
-  bleuart.begin();
+  // bleuart.begin();
+  blegamepad.begin();
+
 
   // Start BLE Battery Service
-  blebas.begin();
-  blebas.write(100);
+  // blebas.begin();
+  // blebas.write(100);
 
   // Set up and start advertising
   startAdv();
@@ -163,8 +166,11 @@ void startAdv(void)
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
 
+  Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_GAMEPAD);
+
   // Include bleuart 128-bit uuid
-  Bluefruit.Advertising.addService(bleuart);
+  // Bluefruit.Advertising.addService(bleuart);
+  Bluefruit.Advertising.addService(blegamepad);
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
@@ -216,6 +222,34 @@ void loop() {
 
   st_out = abs(st_out - (255 * (st_rev * 1)));
   th_out = abs(th_out - (255 * (th_rev * 1)));
+
+
+  // Serial.print("st_in: ");
+  // Serial.println(st_in);
+  // Serial.print("th_in: ");
+  // Serial.println(th_in);
+  // if (st_in < st_min) {
+  //   st_min = st_in;
+  // } 
+  // if (st_in > st_max) {
+  //   st_max = st_in;
+  // } 
+  // if (th_in < th_min) {
+  //   th_min = th_in;
+  // } 
+  // if (th_in > th_max) {
+  //   th_max = th_in;
+  // } 
+  // Serial.print("min st: ");
+  // Serial.println(st_min);
+  // Serial.print("max st: ");
+  // Serial.println(st_max);
+  // Serial.print("min th: ");
+  // Serial.println(th_min);
+  // Serial.print("max th: ");
+  // Serial.println(th_max);
+  // Serial.println("----------");
+
 
 
 
@@ -279,71 +313,104 @@ void loop() {
   // byte st_out = norm_byte(st_val, -1.0, 1.0);
   // byte th_out = norm_byte(th_val, -1.0, 1.0);
 
+  // "Joysticks"
+  gp.x = st_out - 127;
+  gp.y = th_out - 127;
+  gp.rx = ch_3_out - 127;
 
+  // Treat slider like an analog trigger 
+  // if (ch_3_out < CH3_AUTO) {
+    // gp.rx = -127;
+  // } else if (ch_3_out > CH3_TRAIN) {
+    // gp.rx = 127;
+  // } else {
+    // gp.rx = 0;
+  // }
 
-
-
+  // treat switch like an analog trigger
+  if (ch_4_in == LOW) {
+    gp.ry = -127;
+  } else if (ch_4_in == HIGH) {
+    gp.ry = 127;
+  } else {
+    gp.ry = 0;
+  }
 
   if (ch_4_in == LOW) {
-    btns_out |= 1 << button::ch_4_switch;
+    gp.buttons |= 1 << button::ch_4_switch;
   } 
   // SCREEN ROTATED SO IT'S ALL REVERSED
   if (! (ss_btns & TFTWING_BUTTON_LEFT)) {
-    btns_out |= 1 << button::joy_right;
+    gp.buttons |= 1 << button::joy_right;
+  // else:
+
     // print_scroll("RIGHT");
   }
   if (! (ss_btns & TFTWING_BUTTON_RIGHT)) {
-    btns_out |= 1 << button::joy_left;
+    gp.buttons |= 1 << button::joy_left;
     // print_scroll("LEFT");
   }
   if (! (ss_btns & TFTWING_BUTTON_DOWN)) {
-    btns_out |= 1 << button::joy_up;
+    gp.buttons |= 1 << button::joy_up;
     // print_scroll("UP");
   }
   if (! (ss_btns & TFTWING_BUTTON_UP)) {
-    btns_out |= 1 << button::joy_down;
+    gp.buttons |= 1 << button::joy_down;
     // print_scroll("DOWN");  
   }
   if (! (ss_btns & TFTWING_BUTTON_A)) {
-    btns_out |= 1 << button::tft_a;
+    gp.buttons |= 1 << button::tft_a;
     // print_scroll("A");
   }
   if (! (ss_btns & TFTWING_BUTTON_B)) {
-    btns_out |= 1 << button::tft_b;
+    gp.buttons |= 1 << button::tft_b;
     // print_scroll("B");
   }
   if (! (ss_btns & TFTWING_BUTTON_SELECT)) {
-    btns_out |= 1 << button::joy_select;
+    gp.buttons |= 1 << button::joy_select;
     // print_scroll("select");
   }
 
-  
+  // trying this just to see
+  gp.buttons = ss_btns;
+
+  blegamepad.report(&gp);
+
+  // Serial.print("st: ");
+  // Serial.print(st_out);
+  // Serial.print(" th: ");
+  // Serial.print(th_out);
+  // Serial.print(" sld: ");
+  // Serial.print(ch_3_out);
+  // Serial.print(" Btns: ");
+  // Serial.println(btns_out);
 
   // send to car
   // since UART, don't need first char?
-  uint8_t buf[8];
-  // buf[0] = 'c';
-  buf[0] = st_out;
-  buf[1] = ',';
-  buf[2] = th_out;
-  buf[3] = ',';
-  buf[4] = ch_3_out;
-  buf[5] = ',';
-  buf[6] = btns_out;
-  // buf[7] = 0
+  // uint8_t buf[7];
+  // // buf[0] = 'c';
+  // buf[0] = st_out;
+  // buf[1] = ',';
+  // buf[2] = th_out;
+  // buf[3] = ',';
+  // buf[4] = ch_3_out;
+  // buf[5] = ',';
+  // buf[6] = btns_out;
+  
+  // bleuart.write(buf, 7);
 
-  bleuart.write(buf, 8);
+  // check, briefly, if there's data to display
+  
 
-
-  while (bleuart.available()) {
-    uint8_t ch;
-
-    ch = (uint8_t) bleuart.read();
-    print_scroll(String(ch));
-  }
+  // while (bleuart.available()) {
+  //   uint8_t ch;
+  //   ch = (uint8_t) bleuart.read();
+  //   Serial.print(ch);
+  // }
+  // Serial.println("-");
 
   // How much?
-  delay(LOOP_DELAY);
+  // delay(LOOP_DELAY);
 }
 
 void processMode(int mode_switch) {
@@ -425,6 +492,7 @@ void connect_callback(uint16_t conn_handle)
   print_screen("Connected:" + String(central_name), true);
   // print_scroll("Connected: ");
   // print_scroll("  " + String(central_name));
+  // is_active = true;
 }
 
 /**
