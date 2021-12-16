@@ -2,110 +2,58 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include "Adafruit_miniTFTWing.h"
-#include <InternalFileSystem.h>
-#include "../lib/Bluefruit52Lib/src/services/BLEDis.h"
-#include "../lib/Bluefruit52Lib/src/services/BLEBas.h"
-#include "../lib/Bluefruit52Lib/src/services/BLEUart.h"
-#include "../lib/Bluefruit52Lib/src/bluefruit.h"
-#include <BLEAdvertising.h>
+// #include <InternalFileSystem.h>
+#include <bluefruit.h>
+// #include <BLEAdvertising.h>
 
+#include "tx.h"
+#include "Axis.h"
 
-// BLE Service
-BLEDis  bledis;  // device information
-BLEUart bleuart; // uart over ble
-BLEBas  blebas;  // battery
+BLEDis  bledis;
+BLEHidGamepad blegamepad;
 
-BLEHidGamepad blegamepad; // test
+// defined in hid.h from Adafruit_TinyUSB_Arduino
 hid_gamepad_report_t gp;
 
-#define CH3_TRAIN 682
-#define CH3_AUTO 341
-#define WIPE_SECONDS 5
-#define LOOP_DELAY 1000
-
-#define MIN_STEERING 130
-#define MAX_STEERING 941
-#define MIN_THROTTLE 230
-#define MAX_THROTTLE 646
-#define MIN_ST_TRIM 0
-#define MAX_ST_TRIM 1023 // 942
-#define MIN_TH_TRIM 0
-#define MAX_TH_TRIM 1023 // 939
-
-int st_max = 0;
-int st_min = 1023;
-int th_max = 0;
-int th_min = 1023;
-
-
-extern uint8_t packetbuffer[];
-
-int min_th_trim = 1023;
-int max_th_trim = 0;
-
-int min_st_trim = 1023;
-int max_st_trim = 0;
-
-enum pin { ch_3 = 30,
-           ch_4 = 11,
-           st = 2,
-           st_dr = 3,
-           st_rev = 16,
-           st_trm = 4,
-           th = 28,
-           th_dr = 29,
-           th_rev = 27,
-           th_trm = 5,
-           tft_dc = 15,
-           tft_cs = 7,
-           tft_rst = -1
-};
-
-enum button { joy_up, joy_down, joy_left, joy_right, joy_select, tft_a, 
-              tft_b, ch_4_switch };
-
-enum mode { autonomous, manual, training, erasing, };
-
-bool is_active;
-uint8_t mode;
-String status;
+// #define LOOP_DELAY 1000
 
 Adafruit_miniTFTWing ss;
-Adafruit_ST7735 tft = Adafruit_ST7735(pin::tft_cs, pin::tft_dc, pin::tft_rst);
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
+
+GFXcanvas1 canvas(tft.width(), tft.height());
 
 String id_str = "EF:EB:FD:C7:F8:DA";
-String mode_string[] = { "Autonomous", "Manual", "Data", "Erasing"};
-char state_string[3][2][20] = { {"Stopped", "Driving"},  {"Disarmed", "Armed"}, {"Paused", "Recording"}  };
-
 int current_mode;
-int seconds_to_erase;
 
-void startAdv(void);
-void connect_callback(uint16_t);
-void disconnect_callback(uint16_t, uint8_t);
+// in, trim, exp, rev
+Axis steering(ST_PIN, ST_TRM_PIN, ST_EXP_PIN, ST_REV_PIN);
+Axis throttle(TH_PIN, TH_TRM_PIN, TH_EXP_PIN, TH_REV_PIN);
+
+// void startAdv(void);
+// void connect_callback(uint16_t);
+// void disconnect_callback(uint16_t, uint8_t);
 void print_scroll(String);
 void print_screen(String, bool);
-void processState(int);
-void processMode(int);
-void print_status(bool, bool, bool);
 
 
-float norm_axis(long, long, long, float, float);
-byte norm_byte(float, float, float);
-float apply_exp(float, float);
-
+// float norm_input(int, int, int, float, float);
+// byte norm_axis(int, int, int, int, int);
+byte norm_output(float, float, float);
+// float apply_exp(float, float);
+int read_slider(int);
+void show_menu(int);
 
 void setup() {
-  // set input pins
-  pinMode(pin::ch_4, INPUT);
-  pinMode(pin::st_rev, INPUT_PULLUP);
-  pinMode(pin::th_rev, INPUT_PULLUP);
+
+  // set reverse switch pullups
+  pinMode(ST_REV_PIN, INPUT_PULLUP);
+  pinMode(TH_REV_PIN, INPUT_PULLUP);
 
   Serial.begin(9600);
 
-  // scroll_called = 0;
-
-  // tft wing
+  //---------
+  // TFT Wing
+  //---------
   if(!ss.begin()) {
     Serial.println("seesaw couldn't be found!");
     while(1);
@@ -116,48 +64,44 @@ void setup() {
   tft.initR(INITR_MINI160x80);
   tft.cp437(true);
   Serial.println("TFT initialized");
-  tft.setRotation(1); // USB jack on the right, joystick on the right
+  tft.setRotation(1); // reverse for controller config
   tft.fillScreen(ST77XX_BLACK);
   delay(200);
-  // print_test();
 
+  // ---------
+  // BlueFruit
+  // ---------
   // Config the peripheral connection with maximum bandwidth 
   // more SRAM required by SoftDevice
   // Note: All config***() function must be called before begin()
-  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-
+  // Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
 
   // Bluefruit.setName(getMcuUniqueID()); // useful testing with multiple central connections
-  Bluefruit.Periph.setConnectCallback(connect_callback);
-  Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
+  // Bluefruit.Periph.setConnectCallback(connect_callback);
+  // Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
   // Configure and Start Device Information Service
   bledis.setManufacturer("Adafruit Industries");
   bledis.setModel("Bluefruit Feather52");
   bledis.begin();
 
-  // Configure and Start BLE Uart Service
-  // bleuart.begin();
+  // Configure BLE HID
   blegamepad.begin();
 
-
-  // Start BLE Battery Service
-  // blebas.begin();
-  // blebas.write(100);
+  /* Set connection interval (min, max) to your perferred value.
+   * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
+   * min = 9*1.25=11.25 ms, max = 12*1.25= 15 ms
+   */
+  /* Bluefruit.Periph.setConnInterval(9, 12); */
 
   // Set up and start advertising
   startAdv();
 
-  // Serial.println("Please use Adafruit's Bluefruit LE app to connect in UART mode");
-  // Serial.println("Once connected, enter character(s) that you wish to send");
   print_scroll("Dev ID : " + id_str);
-  
-  
-  current_mode = mode::manual;
-  is_active = false; // state_string[current_mode][false];
-  print_status(true, true, true);
+
+  current_mode = DRIVE_MODE;
 }
 
 void startAdv(void)
@@ -165,15 +109,8 @@ void startAdv(void)
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-
   Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_GAMEPAD);
-
-  // Include bleuart 128-bit uuid
-  // Bluefruit.Advertising.addService(bleuart);
   Bluefruit.Advertising.addService(blegamepad);
-
-  // Secondary Scan Response packet (optional)
-  // Since there is no room for 'Name' in Advertising packet
   Bluefruit.ScanResponse.addName();
   
   /* Start Advertising
@@ -194,279 +131,86 @@ void startAdv(void)
 
 void loop() {
 
-
-  // poll analog
-  int ch_3_in = analogRead(pin::ch_3);
-  int st_in = analogRead(pin::st);
-  int st_exp_in = analogRead(pin::st_dr);
-  int st_trm_in = analogRead(pin::st_trm); // - 511;
-  int th_in = analogRead(pin::th);
-  int th_exp_in = analogRead(pin::th_dr);
-  int th_trm_in = analogRead(pin::th_trm); // - 511;
-
-  // poll digital
-  int ch_4_in = digitalRead(pin::ch_4);
-  bool st_rev = digitalRead(pin::st_rev) == LOW;
-  bool th_rev = digitalRead(pin::th_rev) == LOW;
-  uint32_t ss_btns = ss.readButtons();
+  // displat/handle Menu
+  show_menu(current_mode);
+  
+  int ss_buttons = ss.readButtons();
+  
+  
+  switch(current_mode) {
+  case DRIVE_MODE:
+    // handle drive menu
 
 
-  // Skipping all of the above for now
-  byte st_out = norm_byte(st_in, MIN_STEERING, MAX_STEERING);
-  byte th_out = norm_byte(th_in, MIN_THROTTLE, MAX_THROTTLE);
-  byte st_trm_out = norm_byte(st_trm_in, MIN_STEERING, MAX_STEERING) - 128;
-  byte th_trm_out = norm_byte(th_trm_in, MIN_THROTTLE, MAX_THROTTLE) - 128;
+    // handle sliders
+    int ch3_in = analogRead(CH_3_PIN);
+    int ch4_in = analogRead(CH_4_PIN);
+    int ch3_out = read_slider(ch3_in);
+    int ch4_out = read_slider(ch4_in);
 
-  st_out += st_trm_out;
-  th_out += th_trm_out;
+    // joysticks
+    gp.x = steering.getOuput();
+    gp.y = throttle.getOuput();
+    // triggers
+    gp.z = ch3_out;
+    gp.rz = ch4_out;
+    // buttons
+    gp.buttons = ss.readButtons();
 
-  st_out = abs(st_out - (255 * (st_rev * 1)));
-  th_out = abs(th_out - (255 * (th_rev * 1)));
-
-
-  // Serial.print("st_in: ");
-  // Serial.println(st_in);
-  // Serial.print("th_in: ");
-  // Serial.println(th_in);
-  // if (st_in < st_min) {
-  //   st_min = st_in;
-  // } 
-  // if (st_in > st_max) {
-  //   st_max = st_in;
-  // } 
-  // if (th_in < th_min) {
-  //   th_min = th_in;
-  // } 
-  // if (th_in > th_max) {
-  //   th_max = th_in;
-  // } 
-  // Serial.print("min st: ");
-  // Serial.println(st_min);
-  // Serial.print("max st: ");
-  // Serial.println(st_max);
-  // Serial.print("min th: ");
-  // Serial.println(th_min);
-  // Serial.print("max th: ");
-  // Serial.println(th_max);
-  // Serial.println("----------");
-
-
-
-
-  // Serial.print("st_trm_in: ");
-  // Serial.println(st_trm_in);
-  // Serial.print("th_trm_in: ");
-  // Serial.println(th_trm_in);
-  // if (th_trm_in < min_th_trim) {
-  //   min_th_trim = th_trm_in;
-  // } 
-  // if (th_trm_in > max_th_trim) {
-  //   max_th_trim = th_trm_in;
-  // } 
-  // if (st_trm_in < min_st_trim) {
-  //   min_st_trim = st_trm_in;
-  // } 
-  // if (st_trm_in > max_st_trim) {
-  //   max_st_trim = st_trm_in;
-  // } 
-  // Serial.print("min throttle: ");
-  // Serial.println(min_th_trim);
-  // Serial.print("max throttle: ");
-  // Serial.println(max_th_trim);
-  // Serial.print("min steering trim: ");
-  // Serial.println(min_st_trim);
-  // Serial.print("max steering trim: ");
-  // Serial.println(max_st_trim);
-  // Serial.println("----------");
-
-
-  // Update state and mode
-  processMode(ch_3_in);
-  processState(ch_4_in);
-
-
-  // process analog
-
-  // apply trim
-  // st_in += st_trm_in;
-  // th_in += th_trm_in;
-
-  // norm axes
-  // float st_val = norm_axis(st_in, -st_trm, 1023+st_trm, -1.0, 1.0);
-  // float th_val = norm_axis(th_in, -th_trm, 1023+th_trm, -1.0, 1.0);
-  // float st_exp_val = float(st_exp_in) / 1023.0;
-  // float th_exp_val = float(th_exp_in) / 1023.0;
-
-  // reverse 
-  // st_val = st_rev ? -1.0 * st_val : st_val;
-  // th_val = th_rev ? -1.0 * th_val : th_val;
-
-
-
-  // apply exponent mod (TEST)
-  // st_val = apply_exp(st_val, st_exp_val);
-  // th_val = apply_exp(th_val, th_exp_val);
-
-  // convert button presses to byte
-  byte btns_out = 0;
-  byte ch_3_out = norm_byte(ch_3_in, 0, 1023);
-  // byte st_out = norm_byte(st_val, -1.0, 1.0);
-  // byte th_out = norm_byte(th_val, -1.0, 1.0);
-
-  // "Joysticks"
-  gp.x = st_out - 127;
-  gp.y = th_out - 127;
-  gp.rx = ch_3_out - 127;
-
-  // Treat slider like an analog trigger 
-  // if (ch_3_out < CH3_AUTO) {
-    // gp.rx = -127;
-  // } else if (ch_3_out > CH3_TRAIN) {
-    // gp.rx = 127;
-  // } else {
-    // gp.rx = 0;
-  // }
-
-  // treat switch like an analog trigger
-  if (ch_4_in == LOW) {
-    gp.ry = -127;
-  } else if (ch_4_in == HIGH) {
-    gp.ry = 127;
-  } else {
-    gp.ry = 0;
-  }
-
-  if (ch_4_in == LOW) {
-    gp.buttons |= 1 << button::ch_4_switch;
+    // transmit report
+    blegamepad.report(&gp);
+    break;
+  case CALIBRATE_MODE:
+    // handle calibrate menu
+    break;
+  default:
+    Serial.println("Loop Switch Default!");
   } 
-  // SCREEN ROTATED SO IT'S ALL REVERSED
-  if (! (ss_btns & TFTWING_BUTTON_LEFT)) {
-    gp.buttons |= 1 << button::joy_right;
-  // else:
-
-    // print_scroll("RIGHT");
-  }
-  if (! (ss_btns & TFTWING_BUTTON_RIGHT)) {
-    gp.buttons |= 1 << button::joy_left;
-    // print_scroll("LEFT");
-  }
-  if (! (ss_btns & TFTWING_BUTTON_DOWN)) {
-    gp.buttons |= 1 << button::joy_up;
-    // print_scroll("UP");
-  }
-  if (! (ss_btns & TFTWING_BUTTON_UP)) {
-    gp.buttons |= 1 << button::joy_down;
-    // print_scroll("DOWN");  
-  }
-  if (! (ss_btns & TFTWING_BUTTON_A)) {
-    gp.buttons |= 1 << button::tft_a;
-    // print_scroll("A");
-  }
-  if (! (ss_btns & TFTWING_BUTTON_B)) {
-    gp.buttons |= 1 << button::tft_b;
-    // print_scroll("B");
-  }
-  if (! (ss_btns & TFTWING_BUTTON_SELECT)) {
-    gp.buttons |= 1 << button::joy_select;
-    // print_scroll("select");
-  }
-
-  // trying this just to see
-  gp.buttons = ss_btns;
-
-  blegamepad.report(&gp);
-
-  // Serial.print("st: ");
-  // Serial.print(st_out);
-  // Serial.print(" th: ");
-  // Serial.print(th_out);
-  // Serial.print(" sld: ");
-  // Serial.print(ch_3_out);
-  // Serial.print(" Btns: ");
-  // Serial.println(btns_out);
-
-  // send to car
-  // since UART, don't need first char?
-  // uint8_t buf[7];
-  // // buf[0] = 'c';
-  // buf[0] = st_out;
-  // buf[1] = ',';
-  // buf[2] = th_out;
-  // buf[3] = ',';
-  // buf[4] = ch_3_out;
-  // buf[5] = ',';
-  // buf[6] = btns_out;
-  
-  // bleuart.write(buf, 7);
-
-  // check, briefly, if there's data to display
-  
-
-  // while (bleuart.available()) {
-  //   uint8_t ch;
-  //   ch = (uint8_t) bleuart.read();
-  //   Serial.print(ch);
-  // }
-  // Serial.println("-");
-
-  // How much?
-  // delay(LOOP_DELAY);
 }
 
-void processMode(int mode_switch) {
-  uint8_t new_mode;
-  bool clear_mode;
-  if (mode_switch > CH3_TRAIN) {
-    new_mode = mode::training;
-  } else if (mode_switch < CH3_AUTO) {
-    new_mode = mode::autonomous;
+void show_menu(int mode) {
+  // brute
+  String top_btn;
+  String bot_btn;
+  String mode_str;
+  if (mode == DRIVE_MODE) {
+    top_btn = "";
+    bot_btn = "";
+    mode_str = "Drive";
+  } else if (mode == CALIBRATE_MODE) {
+    top_btn = "confirm";
+    bot_btn = "cancel";
+    mode_str = "Calibrating";
   } else {
-    new_mode = mode::manual;
+    top_btn = "calibrate";
+    bot_btn = "";
+    mode_str = "Paused";
   }
-  clear_mode = new_mode != current_mode;
-  current_mode = new_mode;
-  print_status(clear_mode, clear_mode, false);
-  clear_mode = false;
+  // write top button at top
+  canvas.fillScreen(ST77XX_BLACK);
+  canvas.setTextSize(1);
+  canvas.setCursor(0, 15);
+  canvas.print(top_btn);
+  canvas.setCursor(0, 55);
+  canvas.print(bot_btn);
+  canvas.setCursor(20, 30);
+  canvas.setTextSize(2);
+  canvas.print(mode_str);
+  tft.drawBitmap(0, 0, canvas.getBuffer(), tft.width(), tft.height(), 
+                 ST7735_WHITE, ST7735_BLACK); 
 }
 
-void processState(int state_switch) {
-  uint8_t new_active;
-  bool clear_state = false;
-  if (state_switch == LOW) {
-    new_active = true;
+
+int read_slider(int val) {
+  if (val > SLIDER_HIGH) {
+    return MAX_OUT;
+  } else if (val < SLIDER_LOW) {
+    return MIN_OUT;
   } else {
-    new_active = false;
+    return NEUTRAL_OUT;
   }
-  clear_state = new_active != is_active;
-  is_active = new_active;
-  print_status(false, clear_state, false);
-  clear_state = false;
 }
 
-void print_status(bool reset_mode, bool reset_state, bool reset_screen) {
-  if (reset_screen) {
-    tft.fillRect(0, 18, tft.width(), 41, ST77XX_BLACK);
-    tft.setCursor(0,18);
-    tft.println("Mode:  " + mode_string[current_mode] + "\n");    
-    tft.print("State: ");
-    tft.print(is_active ? state_string[current_mode][is_active] : state_string[current_mode][is_active]);
-  }
-  else 
-  { 
-    if (reset_mode) {
-      tft.fillRect(30, 18, tft.width(), 25, ST77XX_BLACK);
-      tft.setCursor(0, 18);
-      tft.print("Mode:  " + mode_string[current_mode]);
-      reset_state = true;
-    } 
-    if (reset_state) {
-      tft.fillRect(30, 34, tft.width(), 42, ST77XX_BLACK);
-      tft.setCursor(0, 34);
-      tft.print("State: ");
-      tft.print(is_active ? state_string[current_mode][is_active] : state_string[current_mode][is_active]);
-    }
-  }
-}
 
 void print_screen(String new_str, bool refresh) {
   if (refresh) {
@@ -476,46 +220,46 @@ void print_screen(String new_str, bool refresh) {
   }
   tft.setCursor(0,20);
   tft.print(new_str);
+
+  
 }
 
-// callback invoked when central connects
-void connect_callback(uint16_t conn_handle)
-{
-  // Get the reference to current connection
-  BLEConnection* connection = Bluefruit.Connection(conn_handle);
+// TODO: figure out if there are actually needed
+// // callback invoked when central connects
+// void connect_callback(uint16_t conn_handle)
+// {
+//   // Get the reference to current connection
+//   BLEConnection* connection = Bluefruit.Connection(conn_handle);
 
-  char central_name[32] = { 0 };
-  connection->getPeerName(central_name, sizeof(central_name));
+//   char central_name[32] = { 0 };
+//   connection->getPeerName(central_name, sizeof(central_name));
 
-  Serial.print("Connected to ");
-  Serial.println(central_name);
-  print_screen("Connected:" + String(central_name), true);
-  // print_scroll("Connected: ");
-  // print_scroll("  " + String(central_name));
-  // is_active = true;
-}
+//   Serial.print("Connected to ");
+//   Serial.println(central_name);
+//   print_screen("Connected:" + String(central_name), true);
+//   // print_scroll("Connected: ");
+//   // print_scroll("  " + String(central_name));
+//   // is_active = true;
+// }
 
-/**
- * Callback invoked when a connection is dropped
- * @param conn_handle connection where this event happens
- * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
- */
-void disconnect_callback(uint16_t conn_handle, uint8_t reason)
-{
-  (void) conn_handle;
-  (void) reason;
+// /**
+//  * Callback invoked when a connection is dropped
+//  * @param conn_handle connection where this event happens
+//  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
+//  */
+// void disconnect_callback(uint16_t conn_handle, uint8_t reason)
+// {
+//   (void) conn_handle;
+//   (void) reason;
 
-  Serial.println();
-  Serial.print("Disconnected, reason = 0x"); 
-  Serial.println(reason, HEX);
-  print_scroll("");
-  print_scroll("Disconnected:"); 
-  print_scroll(" reason = 0x" + String(reason, HEX));
-  is_active = false;
-  print_screen("Dev ID : " + id_str, true);
-}
-
-
+//   Serial.println();
+//   Serial.print("Disconnected, reason = 0x"); 
+//   Serial.println(reason, HEX);
+//   print_scroll("");
+//   print_scroll("Disconnected:"); 
+//   print_scroll(" reason = 0x" + String(reason, HEX));
+//   print_screen("Dev ID : " + id_str, true);
+// }
 
 void print_scroll(String new_str) {
   static int scroll_size = 9;
@@ -545,17 +289,6 @@ void print_scroll(String new_str) {
   }
 }
 
-
-
-float norm_axis(long x, long in_min, long in_max, float out_min, float out_max) {
-  return float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
-}
-
-byte norm_byte(float x, float in_min, float in_max) {
-  return (x - in_min) * 255 / (in_max - in_min);
-}
-
-// rcgroups.com/forums/showthread.php?1675540-who-know-the-algorithm-for-exponential-curve-in-RC
-float apply_exp(float x, float a) {
-  return a * pow(x, 3) + (1.0 - a) * x;
+byte norm_output(int x, int in_min=MIN_IN, int in_max=MAX_IN, int out_min=MIN_OUT, int out_max=MAX_OUT) {
+  return byte(float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min);
 }
