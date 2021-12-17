@@ -1,13 +1,10 @@
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
-#include "Adafruit_miniTFTWing.h"
-// #include <InternalFileSystem.h>
 #include <bluefruit.h>
-// #include <BLEAdvertising.h>
-
-#include "tx.h"
+#include "Adafruit_miniTFTWing.h"
 #include "Axis.h"
+#include "tx.h"
 
 BLEDis  bledis;
 BLEHidGamepad blegamepad;
@@ -15,37 +12,31 @@ BLEHidGamepad blegamepad;
 // defined in hid.h from Adafruit_TinyUSB_Arduino
 hid_gamepad_report_t gp;
 
-// #define LOOP_DELAY 1000
-
 Adafruit_miniTFTWing ss;
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
-
 GFXcanvas1 canvas(tft.width(), tft.height());
-
-String id_str = "EF:EB:FD:C7:F8:DA";
-int current_mode;
 
 // in, trim, exp, rev
 Axis steering(ST_PIN, ST_TRM_PIN, ST_EXP_PIN, ST_REV_PIN);
 Axis throttle(TH_PIN, TH_TRM_PIN, TH_EXP_PIN, TH_REV_PIN);
 
-// void startAdv(void);
+String id_str = "EF:EB:FD:C7:F8:DA";
+int current_mode;
+
+// TODO: callbacks can be useful for hand unit display, actually.
 // void connect_callback(uint16_t);
 // void disconnect_callback(uint16_t, uint8_t);
 void print_scroll(String);
 void print_screen(String, bool);
 
-
-// float norm_input(int, int, int, float, float);
-// byte norm_axis(int, int, int, int, int);
 byte norm_output(float, float, float);
-// float apply_exp(float, float);
 int read_slider(int);
 void show_menu(int);
 
 void setup() {
 
   // set reverse switch pullups
+  // do in axis instead?
   pinMode(ST_REV_PIN, INPUT_PULLUP);
   pinMode(TH_REV_PIN, INPUT_PULLUP);
 
@@ -79,8 +70,8 @@ void setup() {
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
 
   // Bluefruit.setName(getMcuUniqueID()); // useful testing with multiple central connections
-  // Bluefruit.Periph.setConnectCallback(connect_callback);
-  // Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
+  Bluefruit.Periph.setConnectCallback(connect_callback);
+  Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
   // Configure and Start Device Information Service
   bledis.setManufacturer("Adafruit Industries");
@@ -130,41 +121,65 @@ void startAdv(void)
 
 
 void loop() {
-
-  // displat/handle Menu
+  // display menu
   show_menu(current_mode);
-  
-  int ss_buttons = ss.readButtons();
-  
-  
-  switch(current_mode) {
-  case DRIVE_MODE:
-    // handle drive menu
-
 
     // handle sliders
-    int ch3_in = analogRead(CH_3_PIN);
-    int ch4_in = analogRead(CH_4_PIN);
-    int ch3_out = read_slider(ch3_in);
-    int ch4_out = read_slider(ch4_in);
+  int ch3_in = analogRead(CH_3_PIN);
+  int ch4_in = analogRead(CH_4_PIN);
+  int ch3_out = read_slider(ch3_in);
+  int ch4_out = read_slider(ch4_in);
+  int ss_buttons = ss.readButtons();
 
-    // joysticks
-    gp.x = steering.getOuput();
-    gp.y = throttle.getOuput();
+  switch(current_mode) {
+  case DRIVE_MODE:
+
+      // check if pausing 
+    if (ch4_in == SLIDER_HIGH) {
+      current_mode = PAUSE_MODE;
+      // cut throttle/steering
+      gp.x = NEUTRAL_OUT;
+      gp.y = NEUTRAL_OUT;
+    } else {
+      // read axes
+      gp.x = steering.getOuput();
+      gp.y = throttle.getOuput();
+    }
     // triggers
     gp.z = ch3_out;
     gp.rz = ch4_out;
     // buttons
-    gp.buttons = ss.readButtons();
-
+    gp.buttons = ss_buttons;
     // transmit report
     blegamepad.report(&gp);
     break;
   case CALIBRATE_MODE:
-    // handle calibrate menu
+    if (!(ss_buttons & TFTWING_BUTTON_B)) {
+      // confirm calibration, apply new values
+      steering.applyCalibration();
+      throttle.applyCalibration();
+      current_mode = PAUSE_MODE;
+    } else if (!(ss_buttons & TFTWING_BUTTON_A)) {
+      // end calibrate mode without apply calibration
+      current_mode = PAUSE_MODE;
+    } else {
+      // continue calibrating
+      steering.calibrate();
+      throttle.calibrate();
+    }
     break;
-  default:
-    Serial.println("Loop Switch Default!");
+  default: // pause mode
+    if (! (ss_buttons & TFTWING_BUTTON_B)){
+      // start calibration as ordered
+      current_mode = CALIBRATE_MODE;
+      steering.startCalibration();
+      throttle.startCalibration();
+    } else {
+    // don't start drive and calibration at the same time
+      if (ch4_in == SLIDER_LOW) {
+        current_mode = DRIVE_MODE;
+      }
+    }
   } 
 }
 
@@ -200,7 +215,6 @@ void show_menu(int mode) {
                  ST7735_WHITE, ST7735_BLACK); 
 }
 
-
 int read_slider(int val) {
   if (val > SLIDER_HIGH) {
     return MAX_OUT;
@@ -211,7 +225,6 @@ int read_slider(int val) {
   }
 }
 
-
 void print_screen(String new_str, bool refresh) {
   if (refresh) {
     tft.fillScreen(ST77XX_BLACK);
@@ -219,47 +232,8 @@ void print_screen(String new_str, bool refresh) {
     tft.setTextWrap(true);
   }
   tft.setCursor(0,20);
-  tft.print(new_str);
-
-  
+  tft.print(new_str); 
 }
-
-// TODO: figure out if there are actually needed
-// // callback invoked when central connects
-// void connect_callback(uint16_t conn_handle)
-// {
-//   // Get the reference to current connection
-//   BLEConnection* connection = Bluefruit.Connection(conn_handle);
-
-//   char central_name[32] = { 0 };
-//   connection->getPeerName(central_name, sizeof(central_name));
-
-//   Serial.print("Connected to ");
-//   Serial.println(central_name);
-//   print_screen("Connected:" + String(central_name), true);
-//   // print_scroll("Connected: ");
-//   // print_scroll("  " + String(central_name));
-//   // is_active = true;
-// }
-
-// /**
-//  * Callback invoked when a connection is dropped
-//  * @param conn_handle connection where this event happens
-//  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
-//  */
-// void disconnect_callback(uint16_t conn_handle, uint8_t reason)
-// {
-//   (void) conn_handle;
-//   (void) reason;
-
-//   Serial.println();
-//   Serial.print("Disconnected, reason = 0x"); 
-//   Serial.println(reason, HEX);
-//   print_scroll("");
-//   print_scroll("Disconnected:"); 
-//   print_scroll(" reason = 0x" + String(reason, HEX));
-//   print_screen("Dev ID : " + id_str, true);
-// }
 
 void print_scroll(String new_str) {
   static int scroll_size = 9;
@@ -292,3 +266,38 @@ void print_scroll(String new_str) {
 byte norm_output(int x, int in_min=MIN_IN, int in_max=MAX_IN, int out_min=MIN_OUT, int out_max=MAX_OUT) {
   return byte(float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min);
 }
+
+// callback invoked when central connects
+void connect_callback(uint16_t conn_handle)
+{
+  // Get the reference to current connection
+  BLEConnection* connection = Bluefruit.Connection(conn_handle);
+
+  char central_name[32] = { 0 };
+  connection->getPeerName(central_name, sizeof(central_name));
+
+  Serial.print("Connected to ");
+  Serial.println(central_name);
+  print_scroll("Connected: ");
+  print_scroll("  " + String(central_name));
+}
+
+/**
+ * Callback invoked when a connection is dropped
+ * @param conn_handle connection where this event happens
+ * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
+ */
+void disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  (void) conn_handle;
+  (void) reason;
+
+  Serial.println();
+  Serial.print("Disconnected, reason = 0x"); 
+  Serial.println(reason, HEX);
+  print_scroll("");
+  print_scroll("Disconnected:"); 
+  print_scroll(" reason = 0x" + String(reason, HEX));
+  print_scroll("\n Dev ID :" + id_str); // in case you need to re-enter
+}
+
