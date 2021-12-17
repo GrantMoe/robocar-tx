@@ -137,6 +137,7 @@ yarn.lock
 package-lock.json
 *.dict
 .vscode/settings.json
+.vscode/.
 
 # Arduino
 # https://github.com/arduino/Arduino/blob/master/.gitignore
