@@ -5,6 +5,7 @@
 #include "Adafruit_miniTFTWing.h"
 #include "Axis.h"
 #include "tx.h"
+#include "Tx_tft.h"
 
 BLEDis  bledis;
 BLEHidGamepad blegamepad;
@@ -15,6 +16,7 @@ hid_gamepad_report_t gp;
 Adafruit_miniTFTWing ss;
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN);
 GFXcanvas1 canvas(tft.width(), tft.height());
+Tx_tft tx_display(tft, canvas);
 
 // in, trim, exp, rev
 Axis steering(ST_PIN, ST_TRM_PIN, ST_EXP_PIN, ST_REV_PIN);
@@ -26,11 +28,8 @@ int current_mode;
 // TODO: callbacks can be useful for hand unit display, actually.
 // void connect_callback(uint16_t);
 // void disconnect_callback(uint16_t, uint8_t);
-void print_scroll(String);
-void print_screen(String, bool);
-
 int read_slider(int);
-void show_menu(int);
+// void show_menu(int);
 
 void setup() {
 
@@ -51,12 +50,9 @@ void setup() {
   Serial.println("seesaw started");
   ss.tftReset();
   ss.setBacklight(TFTWING_BACKLIGHT_ON);
-  tft.initR(INITR_MINI160x80);
-  tft.cp437(true);
+  tx_display.init();
   Serial.println("TFT initialized");
-  tft.setRotation(1); // reverse for controller config
-  tft.fillScreen(ST77XX_BLACK);
-  delay(200);
+  
 
   // ---------
   // BlueFruit
@@ -89,7 +85,7 @@ void setup() {
   // Set up and start advertising
   startAdv();
 
-  print_scroll("Dev ID : " + id_str);
+  tx_display.print_scroll("Dev ID : " + id_str);
 
   current_mode = DRIVE_MODE;
 }
@@ -121,7 +117,7 @@ void startAdv(void)
 
 void loop() {
   // display menu
-  show_menu(current_mode);
+  tx_display.show_menu(current_mode);
 
     // handle sliders
   int ch3_in = analogRead(CH_3_PIN);
@@ -182,37 +178,6 @@ void loop() {
   } 
 }
 
-void show_menu(int mode) {
-  // brute
-  String top_btn;
-  String bot_btn;
-  String mode_str;
-  if (mode == DRIVE_MODE) {
-    top_btn = "";
-    bot_btn = "";
-    mode_str = "Drive";
-  } else if (mode == CALIBRATE_MODE) {
-    top_btn = "confirm";
-    bot_btn = "cancel";
-    mode_str = "Calibrating";
-  } else {
-    top_btn = "calibrate";
-    bot_btn = "";
-    mode_str = "Paused";
-  }
-  // write top button at top
-  canvas.fillScreen(ST77XX_BLACK);
-  canvas.setTextSize(1);
-  canvas.setCursor(0, 15);
-  canvas.print(top_btn);
-  canvas.setCursor(0, 55);
-  canvas.print(bot_btn);
-  canvas.setCursor(20, 30);
-  canvas.setTextSize(2);
-  canvas.print(mode_str);
-  tft.drawBitmap(0, 0, canvas.getBuffer(), tft.width(), tft.height(), 
-                 ST7735_WHITE, ST7735_BLACK); 
-}
 
 int read_slider(int val) {
   if (val > SLIDER_HIGH) {
@@ -221,44 +186,6 @@ int read_slider(int val) {
     return MIN_OUT;
   } else {
     return NEUTRAL_OUT;
-  }
-}
-
-void print_screen(String new_str, bool refresh) {
-  if (refresh) {
-    tft.fillScreen(ST77XX_BLACK);
-    tft.setCursor(0,0);
-    tft.setTextWrap(true);
-  }
-  tft.setCursor(0,20);
-  tft.print(new_str); 
-}
-
-void print_scroll(String new_str) {
-  static int scroll_size = 9;
-  static int scroll_called;
-  static String scroll_strs[] = {"", "", "", "", "", "", "", "", ""};
-  tft.setTextWrap(false);
-  tft.setCursor(0, 0);
-  tft.setTextColor(ST7735_WHITE, ST77XX_BLACK);  // should be grey
-  tft.setTextSize(1);
-  if (scroll_called < scroll_size) {
-    scroll_strs[scroll_called] = new_str;
-    scroll_called++;
-  }
-  else {
-    for (int i_shift = 1; i_shift < scroll_size; i_shift++) {
-      scroll_strs[i_shift-1] = scroll_strs[i_shift]; 
-    }
-    scroll_strs[scroll_size-1] = new_str;
-  }
-  for (int i_print = 0; i_print < scroll_size; i_print++) {
-    tft.print(scroll_strs[i_print]);
-    if (tft.getCursorX() < tft.width()) {
-      tft.fillRect(tft.getCursorX(), tft.getCursorY(), 
-                   tft.width() - tft.getCursorX(), 16, ST77XX_BLACK);
-    }
-    tft.print('\n');
   }
 }
 
@@ -273,8 +200,8 @@ void connect_callback(uint16_t conn_handle)
 
   Serial.print("Connected to ");
   Serial.println(central_name);
-  print_scroll("Connected: ");
-  print_scroll("  " + String(central_name));
+  tx_display.print_scroll("Connected: ");
+  tx_display.print_scroll("  " + String(central_name));
 }
 
 /**
@@ -290,9 +217,9 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); 
   Serial.println(reason, HEX);
-  print_scroll("");
-  print_scroll("Disconnected:"); 
-  print_scroll(" reason = 0x" + String(reason, HEX));
-  print_scroll("\n Dev ID :" + id_str); // in case you need to re-enter
+  tx_display.print_scroll("");
+  tx_display.print_scroll("Disconnected:"); 
+  tx_display.print_scroll(" reason = 0x" + String(reason, HEX));
+  tx_display.print_scroll("\n Dev ID :" + id_str); // in case you need to re-enter
 }
 
