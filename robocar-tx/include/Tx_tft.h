@@ -8,7 +8,7 @@
 class Tx_tft {
  public:
   Tx_tft(Adafruit_ST7735, GFXcanvas1);
-  
+
   void init();
   void print_scroll(String);
   void show_menu(int);
@@ -17,6 +17,12 @@ class Tx_tft {
  private:
   Adafruit_ST7735 tft_;
   GFXcanvas1 canvas_;
+   
+  const String menu_strings_[3][3] = {
+    {"", "", "Drive"},
+    {"confirm", "cancel", "Calibrate"},
+    {"calibrate", "", "Paused"}
+  };
 };
 
 

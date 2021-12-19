@@ -29,7 +29,6 @@ int current_mode;
 // void connect_callback(uint16_t);
 // void disconnect_callback(uint16_t, uint8_t);
 int read_slider(int);
-// void show_menu(int);
 
 void setup() {
 
@@ -128,7 +127,6 @@ void loop() {
 
   switch(current_mode) {
   case DRIVE_MODE:
-
       // check if pausing 
     if (ch4_in == SLIDER_HIGH) {
       current_mode = PAUSE_MODE;
@@ -213,7 +211,6 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
   (void) reason;
-
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); 
   Serial.println(reason, HEX);

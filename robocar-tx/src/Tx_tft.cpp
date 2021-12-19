@@ -56,19 +56,9 @@ void Tx_tft::show_menu(int mode) {
   String top_btn;
   String bot_btn;
   String mode_str;
-  if (mode == DRIVE_MODE) {
-    top_btn = "";
-    bot_btn = "";
-    mode_str = "Drive";
-  } else if (mode == CALIBRATE_MODE) {
-    top_btn = "confirm";
-    bot_btn = "cancel";
-    mode_str = "Calibrating";
-  } else {
-    top_btn = "calibrate";
-    bot_btn = "";
-    mode_str = "Paused";
-  }
+  top_btn = menu_strings_[DRIVE_MODE][0];
+  bot_btn = menu_strings_[DRIVE_MODE][1];
+  mode_str = menu_strings_[DRIVE_MODE][2];
   // write top button at top
   canvas_.fillScreen(ST77XX_BLACK);
   canvas_.setTextSize(1);
