@@ -29,7 +29,6 @@ int current_mode;
 void print_scroll(String);
 void print_screen(String, bool);
 
-byte norm_output(float, float, float);
 int read_slider(int);
 void show_menu(int);
 
@@ -261,10 +260,6 @@ void print_scroll(String new_str) {
     }
     tft.print('\n');
   }
-}
-
-byte norm_output(int x, int in_min=MIN_IN, int in_max=MAX_IN, int out_min=MIN_OUT, int out_max=MAX_OUT) {
-  return byte(float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min);
 }
 
 // callback invoked when central connects
