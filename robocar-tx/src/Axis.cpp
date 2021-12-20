@@ -1,6 +1,5 @@
 #include "Axis.h"
 
-
 Axis::Axis(int in_pin, int trim_pin, int exp_pin, int rev_pin) 
     : in_pin_(in_pin), 
       trm_pin_(trim_pin), 
@@ -8,20 +7,6 @@ Axis::Axis(int in_pin, int trim_pin, int exp_pin, int rev_pin)
       rev_pin_(rev_pin)
       {
 }
-
-// Axis::Axis(int in_pin, int trim_pin, int exp_pin, int rev_pin, int min_in=0, int max_in=1023, int min_trm=0, int max_trm=1023, int min_exp=0, int max_exp=1023) 
-//     : in_pin_(in_pin), 
-//       trm_pin_(trim_pin), 
-//       exp_pin_(exp_pin),
-//       rev_pin_(rev_pin),
-//       min_in_(min_in),
-//       max_in_(max_in),
-//       min_trm_(min_trm),
-//       max_trm_(max_trm),
-//       min_exp_(min_exp),
-//       max_exp_(max_exp)
-//       {
-// }
 
 void Axis::startCalibration() {
   min_in_cal_ = MAX_IN;
@@ -90,7 +75,7 @@ int Axis::getOuput() {
   // apply trim
   float trimmed_in = normed_in + normed_trm;
   // apply exp
-  float output = applyExp(trimmed_in, normed_exp);
+  // float output = applyExp(trimmed_in, normed_exp);
 
   float output = trimmed_in; // FOR NOW
 
