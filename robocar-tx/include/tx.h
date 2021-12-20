@@ -28,4 +28,17 @@
 #define SLIDER_HIGH 682
 #define SLIDER_LOW 341
 
+#define NUM_BUTTONS 7
+enum button { 
+    joy_up, 
+    joy_down, 
+    joy_left, 
+    joy_right, 
+    joy_select, 
+    tft_a,
+    tft_b};
+
+#define DEBOUNCE 100
+#define COOLDOWN 500
+
 #endif
