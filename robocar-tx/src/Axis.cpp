@@ -48,12 +48,24 @@ void Axis::calibrate() {
   if (raw_exp < min_exp_cal_) {
     min_exp_cal_ = raw_exp;
   }
-  
 }
 
-float Axis::normInput(int x, int in_min=0, int in_max=1023, 
+void Axis::center() {
+  mid_in_ = analogRead(in_pin_);
+  mid_trm_ = analogRead(trm_pin_);
+  mid_exp_ = analogRead(exp_pin_);
+}
+
+// (x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
+float Axis::normInput(int x, int x_min=0, int x_max=1023, int center=NEUTRAL_IN, 
                       float out_min=-1.0, float out_max=1.0) {
-  return float(x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
+  if (x < center) {
+    return float(x - center) / float(center - x_min); 
+  } else if (x > center) {
+    return float(x - center) / float(x_max - center);
+  } else {
+    return 0;
+  }
 }
 
 int Axis::normOutput(float x, float in_min=-1.0, float in_max=1.0, 
@@ -68,10 +80,10 @@ int Axis::getOuput() {
   int raw_trm = analogRead(trm_pin_);
   int raw_exp = analogRead(exp_pin_);
   int rev = digitalRead(rev_pin_);
-  // nrom appropriately
+  // norm appropriately
   float normed_in = normInput(raw_in, min_in_, max_in_); 
   float normed_trm = normInput(raw_trm, min_trm_, max_trm_);
-  float normed_exp = normInput(raw_exp, min_exp_, max_exp_, 0, 1); // instead of -1.0, 1.0
+  float normed_exp = float((raw_exp - min_exp_) / float(max_exp_)); // 0 to 1
   // apply trim
   float trimmed_in = normed_in + normed_trm;
   // apply exp
@@ -85,7 +97,7 @@ int Axis::getOuput() {
   if (rev == LOW) {
     out_int *= -1;
   }  
-  return out_int;
+  return constrain(out_int, MIN_OUT, MAX_OUT);
 }
 
 // rcgroups.com/forums/showthread.php?1675540-who-know-the-algorithm-for-exponential-curve-in-RC

@@ -6,7 +6,6 @@
 #include "Adafruit_miniTFTWing.h"
 #include "Axis.h"
 #include "tx.h"
-// #include "Tx_tft.h"
 
 BLEDis  bledis;
 BLEHidGamepad blegamepad;
@@ -26,6 +25,7 @@ Axis throttle(TH_PIN, TH_TRM_PIN, TH_EXP_PIN, TH_REV_PIN);
 String id_str = "EF:EB:FD:C7:F8:DA";
 int current_mode;
 int previous_mode;
+bool reversed = true;
 
 // TODO: callbacks can be useful for hand unit display, actually.
 void connect_callback(uint16_t);
@@ -34,6 +34,9 @@ void startAdv(void);
 int read_slider(int);
 void show_menu(int);
 void print_scroll(String);
+int miniTFTWing_gamepad_buttons(int, bool);
+int miniTFTWing_gamepad_hat(int, bool);
+
 
 const unsigned long tft_buttons[] = {
   TFTWING_BUTTON_DOWN,
@@ -48,7 +51,7 @@ const unsigned long tft_buttons[] = {
 const String menu_strings_[3][3] = {
   {"", "", "Drive"},
   {"confirm", "cancel", "Cal."},
-  {"", "calibrate", "Pause"}
+  {"center", "calibrate", "Pause"}
 };
 
 bool pressed[NUM_BUTTONS];
@@ -82,8 +85,10 @@ void setup() {
 
   tft.initR(INITR_MINI160x80);
   tft.cp437(true);
-  tft.setRotation(1); // reverse for controller config
-  tft.fillScreen(ST77XX_BLACK);
+  if (reversed) {
+    tft.setRotation(1); // reverse for controller config
+  }
+    tft.fillScreen(ST77XX_BLACK);
   // delay(200);
   Serial.println("TFT initialized");
   
@@ -121,8 +126,9 @@ void setup() {
   Serial.println("started advertising");
   print_scroll("Dev ID : " + id_str);
 
-  previous_mode = 999;
-  current_mode = DRIVE_MODE;
+  previous_mode = PAUSE_MODE;
+  current_mode = PAUSE_MODE;
+  show_menu(current_mode);
 }
 
 void startAdv(void)
@@ -154,20 +160,25 @@ void loop() {
   // display menu
 
     // handle sliders
-  int steering_out = NEUTRAL_OUT;
-  int throttle_out = NEUTRAL_OUT;
+  int steering_out = steering.getOuput();
+  int throttle_out = throttle.getOuput();
   int ch3_in = analogRead(CH_3_PIN);
   int ch3_out = read_slider(ch3_in);
   int ch4_in = digitalRead(CH_4_PIN);
   int ch4_out = 0;
+
+  // pretend it's an axis for right now
   if (ch4_in == HIGH) {
-    ch4_out = SLIDER_HIGH;
+    ch4_out = MAX_OUT;
   } else {
-    ch4_out = SLIDER_LOW;
+    ch4_out = MIN_OUT;
   }
 
   unsigned long time_ms = millis();
+  
   int ss_btns = ss.readButtons();
+
+  // handle for the sake of tx menu debounce
   for (int i = 0; i < NUM_BUTTONS; i++) {
     pressed[i] = false;
     if (! (ss_btns & tft_buttons[i])) {
@@ -177,27 +188,22 @@ void loop() {
       }
     }
   }
-  
+
   switch(current_mode) {
   case DRIVE_MODE:
       // check if pausing 
     if (ch4_in == HIGH) {
       current_mode = PAUSE_MODE;
-    } else {
-      // read axes
-      steering_out = steering.getOuput();
-      throttle_out = throttle.getOuput();
     }
+    // anything else to do here?
     break;
   case CALIBRATE_MODE:
     if (pressed[button::tft_b] == true) {
-    // if (! (ss_btns & TFTWING_BUTTON_B)){
       // confirm calibration, apply new values
       steering.applyCalibration();
       throttle.applyCalibration();
       current_mode = PAUSE_MODE;
     } else if (pressed[button::tft_a] == true) {
-    // } else if (! (ss_btns & TFTWING_BUTTON_A)) {
       // end calibrate mode without apply calibration
       current_mode = PAUSE_MODE;
     } else {
@@ -207,13 +213,16 @@ void loop() {
     }
     break;
   default: // pause mode
-    if (pressed[button::tft_a] == true){
-    // if (! (ss_btns & TFTWING_BUTTON_A)){
+    if (pressed[button::tft_a]){
       // start calibration as ordered
       current_mode = CALIBRATE_MODE;
       steering.startCalibration();
       throttle.startCalibration();
-    } else {
+    } else if (pressed[button::tft_b]) {
+      // center axes
+      steering.center();
+      throttle.center();
+      } else {
     // don't start drive and calibration at the same time
       if (ch4_in == LOW) {
         current_mode = DRIVE_MODE;
@@ -221,12 +230,36 @@ void loop() {
     }
   } 
 
+
+  // ble gamepad : hid axis (jstest-gtk)
+  // x   : 0 (circle 1 horz)
+  // y   : 1 (circle 1 vert)
+  // z   : 2 (circle 2 horz)
+  // rz  : 5 (bar 2)
+  // rx  : 3 (circle 2 vert)
+  // ry  : 4 (bar 1)
+  // hat : NONE
+  // gp.buttons
+  // ??  : 6
+  // ??  : 7
+
+  // hid : ble : jstest-gtk
+  // 0 : x  : circle 1 horz
+  // 1 : y  : circle 1 vert
+  // 2 : z  : circle 2 horz
+  // 3 : rx : circle 2 vert
+  // 4 : ry : bar 1
+  // 5 : rz : bar 2
+  // 6 : ??
+  // 7 : ?? 
+
   // transmit report
   gp.x = steering_out;
   gp.y = throttle_out;
-  gp.rx = ch3_out;
-  gp.ry = ch4_out;
-  gp.buttons = ss_btns;
+  gp.ry = ch3_out;
+  gp.rz = ch4_out;
+  gp.hat = miniTFTWing_gamepad_hat(ss_btns, reversed);
+  gp.buttons = miniTFTWing_gamepad_buttons(ss_btns, reversed);
 
   blegamepad.report(&gp);
 
@@ -236,6 +269,54 @@ void loop() {
   previous_mode = current_mode;
 }
 
+int miniTFTWing_gamepad_buttons(int raw_buttons, bool reversed) {
+  // there are only really three buttons currently.
+  // Adafruit_TinyUSB_Arduino/src/class/hid/hid.h
+  // adafruit : linux
+  // GAMEPAD_BUTTON_SOUTH : GAMEPAD_BUTTON_0
+  // GAMEPAD_BUTTON_NORTH : GAMEPAD_BUTTON_3
+  // GAMEPAD_BUTTON_SELECT : GAMEPAD_BUTTON_10
+  uint32_t gamepad_buttons = 0;
+  if (! (raw_buttons & TFTWING_BUTTON_A)) {
+    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_SOUTH : GAMEPAD_BUTTON_NORTH;
+  }
+  if (! (raw_buttons & TFTWING_BUTTON_B)) {
+    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_NORTH : GAMEPAD_BUTTON_SOUTH;
+  }
+  // joystick switch
+  if (! (raw_buttons & TFTWING_BUTTON_SELECT)) {
+    gamepad_buttons |= GAMEPAD_BUTTON_SELECT;
+  }
+  return gamepad_buttons;
+}
+
+int miniTFTWing_gamepad_hat(int raw_buttons, bool reversed) {
+  int hat = 0;
+  if (! (raw_buttons & TFTWING_BUTTON_LEFT)) {
+    if (! (raw_buttons & TFTWING_BUTTON_DOWN)) {
+      hat = reversed ? GAMEPAD_HAT_UP_RIGHT : GAMEPAD_HAT_DOWN_LEFT;
+    } else if (! (raw_buttons & TFTWING_BUTTON_UP)) {
+      hat = reversed ? GAMEPAD_HAT_DOWN_RIGHT : GAMEPAD_HAT_UP_LEFT;
+    } else {
+      hat = reversed ? GAMEPAD_HAT_RIGHT : GAMEPAD_HAT_LEFT;
+    }
+  } else if (! (raw_buttons & TFTWING_BUTTON_RIGHT)) {
+    if (! (raw_buttons & TFTWING_BUTTON_DOWN)) {
+      hat = reversed ? GAMEPAD_HAT_UP_LEFT : GAMEPAD_HAT_DOWN_RIGHT;
+    } else if (! (raw_buttons & TFTWING_BUTTON_UP)) {
+      hat = reversed ? GAMEPAD_HAT_DOWN_LEFT : GAMEPAD_HAT_UP_RIGHT;
+    } else {
+      hat = reversed ? GAMEPAD_HAT_LEFT : GAMEPAD_HAT_RIGHT;
+    }
+  } else if (! (raw_buttons & TFTWING_BUTTON_DOWN)) {
+    hat = reversed ? GAMEPAD_HAT_UP : GAMEPAD_HAT_DOWN;
+  } else if (! (raw_buttons & TFTWING_BUTTON_UP)) {
+    hat = reversed ? GAMEPAD_HAT_DOWN : GAMEPAD_HAT_UP;
+  } else {
+    hat = GAMEPAD_HAT_CENTERED; // redundant but whatever 
+  }
+  return hat;
+}
 
 int read_slider(int val) {
   if (val > SLIDER_HIGH) {
