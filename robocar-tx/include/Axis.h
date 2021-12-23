@@ -22,8 +22,8 @@ class Axis {
 
   const int in_pin_;
   const int trm_pin_;
-  const int rev_pin_;
   const int exp_pin_;
+  const int rev_pin_;
   int min_in_ = MIN_IN;
   int mid_in_ = NEUTRAL_IN;
   int max_in_ = MAX_IN;
