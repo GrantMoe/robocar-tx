@@ -57,7 +57,7 @@ void Axis::center() {
 }
 
 // (x - in_min) * (out_max - out_min) / float(in_max - in_min) + out_min;
-float Axis::normInput(int x, int x_min=0, int x_max=1023, int center=NEUTRAL_IN, 
+float Axis::normInput(int x, int x_min, int x_max, int center, 
                       float out_min=-1.0, float out_max=1.0) {
   if (x < center) {
     return float(x - center) / float(center - x_min); 
@@ -81,14 +81,16 @@ int Axis::getOuput() {
   int raw_exp = analogRead(exp_pin_);
   int rev = digitalRead(rev_pin_);
   // norm appropriately
-  float normed_in = normInput(raw_in, min_in_, max_in_); 
-  float normed_trm = normInput(raw_trm, min_trm_, max_trm_);
+  float normed_in = normInput(raw_in, min_in_, max_in_, mid_in_); 
+  float normed_trm = normInput(raw_trm, min_trm_, max_trm_, mid_trm_);
   float normed_exp = float((raw_exp - min_exp_) / float(max_exp_)); // 0 to 1
+  
   // apply trim
-  float trimmed_in = normed_in + normed_trm;
+    // float trimmed_in = normed_in + normed_trm;
+  float trimmed_in = normed_in;
+
   // apply exp
   // float output = applyExp(trimmed_in, normed_exp);
-
   float output = trimmed_in; // FOR NOW
 
   // convert to output format

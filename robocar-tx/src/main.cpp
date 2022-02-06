@@ -161,7 +161,8 @@ void loop() {
 
     // handle sliders
   int steering_out = steering.getOuput();
-  int throttle_out = throttle.getOuput();
+  // int throttle_out = throttle.getOuput();
+  int throttle_out = analogRead(TH_PIN);
   int ch3_in = analogRead(CH_3_PIN);
   int ch3_out = read_slider(ch3_in);
   int ch4_in = digitalRead(CH_4_PIN);
@@ -251,7 +252,12 @@ void loop() {
   // 4 : ry : bar 1
   // 5 : rz : bar 2
   // 6 : ??
-  // 7 : ?? 
+  // 7 : ??
+  Serial.print("steering out: ");
+  Serial.println(steering_out);
+  Serial.print("throttle out: ");
+  Serial.println(throttle_out);
+  Serial.println("=======");
 
   // transmit report
   gp.x = steering_out;
@@ -274,16 +280,21 @@ int miniTFTWing_gamepad_buttons(int raw_buttons, bool reversed) {
   // Adafruit_TinyUSB_Arduino/src/class/hid/hid.h
   // adafruit : linux
   // GAMEPAD_BUTTON_SOUTH : GAMEPAD_BUTTON_0
+  // GAMEPAD_BUTTON_EAST : GAMEAPAD_BUTTON_1
   // GAMEPAD_BUTTON_NORTH : GAMEPAD_BUTTON_3
+  // GAMEPAD_BUTTON_WEST : GAMEPAD_BUTTON_4
   // GAMEPAD_BUTTON_SELECT : GAMEPAD_BUTTON_10
+  // note: https://www.kernel.org/doc/html/latest/input/gamepad.html
   uint32_t gamepad_buttons = 0;
   if (! (raw_buttons & TFTWING_BUTTON_A)) {
-    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_SOUTH : GAMEPAD_BUTTON_NORTH;
+    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_SOUTH : GAMEPAD_BUTTON_EAST;
   }
   if (! (raw_buttons & TFTWING_BUTTON_B)) {
-    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_NORTH : GAMEPAD_BUTTON_SOUTH;
+    gamepad_buttons |= reversed ? GAMEPAD_BUTTON_EAST : GAMEPAD_BUTTON_SOUTH;
   }
-  // joystick switch
+  // // joystick switches
+  // if (! (raw_buttons & TFTWING_BUTTON_RIGHT))
+
   if (! (raw_buttons & TFTWING_BUTTON_SELECT)) {
     gamepad_buttons |= GAMEPAD_BUTTON_SELECT;
   }

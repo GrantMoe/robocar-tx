@@ -19,12 +19,12 @@
 #define CALIBRATE_MODE 1
 #define PAUSE_MODE 2
 
-#define MAX_IN 1023
-#define MAX_OUT 127
 #define MIN_IN 0
-#define MIN_OUT -127
 #define NEUTRAL_IN 512
+#define MAX_IN 1023
+#define MIN_OUT -127
 #define NEUTRAL_OUT 0
+#define MAX_OUT 127
 #define SLIDER_HIGH 682
 #define SLIDER_LOW 341
 
